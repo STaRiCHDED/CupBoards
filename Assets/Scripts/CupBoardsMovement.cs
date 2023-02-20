@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using DG.Tweening;
 using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Events;
@@ -16,26 +17,30 @@ public class CupBoardsMovement : MonoBehaviour
 
     [HideInInspector] 
     public UnityEvent OnCupBoardMoved;
-    [SerializeField]
+    [SerializeField] 
     private GameObject _moveableCupBoard;
-    [SerializeField]
+    [SerializeField] 
     private float _travelTime;
-    [UsedImplicitly]
+    [UsedImplicitly] 
     private UnityEvent<Node> _onNodeSelected;
     private Node[] _positions;
     private Node _startPosition;
     private Node _endPosition;
-    private NodeMoving _nodeMoving;
+    private NodeMoving _nodeStatus;
     private List<Node> _path;
     private GameObject _movableActor;
     private float _currentTime;
     private int _currentPosition;
-    public void Initialize(UnityEvent<Node> onNodeSelected,Node[] positions)
+
+    public void Initialize(UnityEvent<Node> onNodeSelected, Node[] positions)
     {
         _onNodeSelected = onNodeSelected;
         _positions = positions;
         _path = new List<Node>();
+        _nodeStatus = NodeMoving.Nothing;
+        _currentTime = 0;
     }
+
     void Start()
     {
         _onNodeSelected.AddListener(ManageNode);
@@ -44,30 +49,36 @@ public class CupBoardsMovement : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (_nodeMoving == NodeMoving.Moving)
+        if (_nodeStatus == NodeMoving.Moving)
         {
-            _currentTime += Time.deltaTime;
-            var result = _currentTime/ _travelTime ;
-            _movableActor.transform.position = Vector3.Lerp(_path[_currentPosition].transform.position, _path[GetNextIndex()].transform.position, result);
+            if (_currentPosition == _path.Count - 1)
+            {
+                _endPosition.ResetNode(true);
+                _endPosition.ChangeNodeColor(_movableActor.GetComponent<Renderer>().material.color);
+                Destroy(_movableActor);
+                OnCupBoardMoved?.Invoke();
+                _nodeStatus = NodeMoving.Nothing;
+                Debug.Log("Перемещение завершилось");
+                return;
+            }
 
-            if (_currentTime >= _travelTime) 
+            _currentTime += Time.deltaTime;
+            var result = _currentTime / _travelTime;
+            _movableActor.transform.position = Vector3.Lerp(_path[_currentPosition].transform.position,
+                _path[GetNextIndex()].transform.position, result);
+
+            if (_currentTime >= _travelTime)
             {
                 _currentTime = 0;
                 _currentPosition = GetNextIndex();
-            }
-            if (_currentPosition == _path.Count - 1)
-            {
-                _path.Clear();
-                _nodeMoving = NodeMoving.Nothing;
-                _endPosition.ResetNode(true,_movableActor.GetComponent<Renderer>().material.color);
-                Destroy(_movableActor);
-                OnCupBoardMoved?.Invoke();
+                Debug.Log($"Перемещение в точку {_path[_currentPosition].name} завершилось");
             }
         }
     }
+
     int GetNextIndex()
     {
-        return _currentPosition+1;
+        return _currentPosition + 1;
     }
     void OnDestroy()
     {
@@ -76,36 +87,44 @@ public class CupBoardsMovement : MonoBehaviour
 
     private void ManageNode(Node node)
     {
-        if (_nodeMoving == NodeMoving.Nothing && node.IsOccupied)
+        Debug.Log(_nodeStatus);
+        if (_nodeStatus == NodeMoving.Nothing && node.IsOccupied)
         {
-            FindPossiblePositions(node);
+            _path.Clear();
+            _endPosition = null;
             _startPosition = node;
-            _nodeMoving = NodeMoving.Start;
+            _nodeStatus = NodeMoving.Start;
+            FindPossiblePositions();
             return;
         }
 
-        if (_nodeMoving == NodeMoving.Start && !node.IsOccupied)
+        if (_nodeStatus == NodeMoving.Start && !node.IsOccupied)
         {
-            CreatePath(node);
             _endPosition = node;
-            _nodeMoving = NodeMoving.Moving;
-            _movableActor = Instantiate(_moveableCupBoard);
-            _movableActor.transform.position = _startPosition.transform.position;
-            _movableActor.GetComponent<Renderer>().material.color = _startPosition.ColorRenderer.material.color;
-            _startPosition.ResetNode(false,Color.white);
-            _path.Reverse();
             _currentPosition = 0;
+            _nodeStatus = NodeMoving.Moving;
+            
+            CreatePath();
+            _movableActor = Instantiate(_moveableCupBoard);
+            
+            var position = _startPosition.transform.position;
+            _movableActor.transform.position = new Vector3(position.x, position.y, position.z - 2);
+            
+            _movableActor.GetComponent<Renderer>().material.color = _startPosition.MaterialColor.color;
+            _startPosition.ResetNode(false);
+            _startPosition.ChangeNodeColor(Color.white);
         }
-        
     }
 
-    private void CreatePath(Node node)
+    private void CreatePath()
     {
-        ResetNodes();
+        ResetNodesColor();
         var visitedNodes = new Dictionary<string, int>();
+        //Debug.Log($"Построение пути, вывод всех вершин");
         foreach (var position in _positions)
         {
-            visitedNodes.Add(position.name,-1);
+            visitedNodes.Add(position.name, -1);
+            //Debug.Log($"{position.name}, {position.IsOccupied}");
         }
         visitedNodes[_startPosition.name] = 0;
         Queue<Node> queue = new Queue<Node>();
@@ -115,95 +134,113 @@ public class CupBoardsMovement : MonoBehaviour
         {
             count++;
             var value = queue.Dequeue();
-            Debug.Log($"Find {value}");
-            foreach (var element in value._neighbors)
+            //Debug.Log($"Попал в вершину {value.name} - {visitedNodes[value.name]}");
+            foreach (var element in value.Neighbors)
             {
-                if (element == node)
+                if (element == _endPosition)
                 {
                     visitedNodes[element.name] = count;
+                    //Debug.Log($"Конец {element.name} - {visitedNodes[element.name]}");
                     break;
                 }
+
                 if (element.IsOccupied || visitedNodes[element.name] > -1)
                 {
                     continue;
                 }
+
                 visitedNodes[element.name] = count;
                 queue.Enqueue(element);
             }
         }
-        count = visitedNodes[node.name];
-        _path.Add(node);
-        var lastNode = node;
+
+        count = visitedNodes[_endPosition.name];
+        _path.Add(_endPosition);
+        var lastNode = _endPosition;
+        //Debug.Log($"Построение пути count = {count}");
         while (count > 0)
         {
             var countBefore = _path.Count;
-            Debug.Log($"Vozvr {lastNode.name}");
-            foreach (var element in lastNode._neighbors)
+            //Debug.Log($"Попал в вершину {lastNode.name} - {visitedNodes[lastNode.name]}{count}{countBefore}");
+            foreach (var element in lastNode.Neighbors)
             {
-                if (visitedNodes[element.name] != count -1)
+                //Debug.Log($"Соседи {element.name} - {visitedNodes[element.name]}");
+                if (visitedNodes[element.name] != count - 1)
                 {
                     continue;
                 }
+
                 lastNode = element;
                 _path.Add(element);
             }
+
             if (_path.Count == countBefore)
             {
-                _nodeMoving = NodeMoving.Nothing;
+                _nodeStatus = NodeMoving.Nothing;
+                Debug.Log($"Нельзя построить путь обратно");
                 return;
             }
             count--;
         }
+        _path.Reverse();
+        var str = "";
         foreach (var node1 in _path)
         {
-            Debug.Log(node1.name);
+            str += node1.name;
         }
+        Debug.Log(str);
     }
 
-    private void FindPossiblePositions(Node node)
+    private void FindPossiblePositions()
     {
-        ResetNodes();
+        ResetNodesColor();
         var count = 0;
         var visitedNodes = new Dictionary<string, bool>();
+        //Debug.Log($"Покраска пути, вывод всех вершин");
         foreach (var position in _positions)
         {
-            visitedNodes.Add(position.name,position.IsOccupied);
+            visitedNodes.Add(position.name, position.IsOccupied);
+            Debug.Log($"{position.name}, {position.IsOccupied}");
         }
-        //visitedNodes[node.name] = true;
         Queue<Node> queue = new Queue<Node>();
-        queue.Enqueue(node);
+        queue.Enqueue(_startPosition);
         while (queue.Count > 0)
         {
             count++;
             var value = queue.Dequeue();
-            Debug.Log($"Перешли к узлу {value}");
-            foreach (var element in value._neighbors)
+            //Debug.Log($"Перешли к узлу {value}");
+            foreach (var element in value.Neighbors)
             {
-                if (element.IsOccupied || visitedNodes[element.name])
+                //Debug.Log($"{element.name}: {visitedNodes[element.name]}");
+                if (visitedNodes[element.name])
                 {
                     continue;
                 }
+
                 visitedNodes[element.name] = true;
-                element.ColorRenderer.material.color = Color.cyan;
+                element.MaterialColor.color = Color.gray;
                 queue.Enqueue(element);
             }
         }
 
         if (count == 1)
         {
-            _nodeMoving = NodeMoving.Nothing;
+            _nodeStatus = NodeMoving.Nothing;
+            //Debug.Log($"Вам некуда ходить Status {_nodeStatus}");
+            
         }
-        Debug.Log($"Алгоритм закончился");
+
+        //Debug.Log($"Алгоритм закончился");
     }
 
-    private void ResetNodes()
+    private void ResetNodesColor()
     {
         foreach (var position in _positions)
         {
             if (!position.IsOccupied)
             {
-                position.ColorRenderer.material.color = Color.white;
-            } 
+                position.ChangeNodeColor(Color.white);
+            }
         }
     }
 }

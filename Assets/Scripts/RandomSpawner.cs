@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using DG.Tweening;
 using UnityEngine;
 
 public class RandomSpawner : MonoBehaviour
@@ -20,16 +21,12 @@ public class RandomSpawner : MonoBehaviour
         var colors = RandomizeColors();
         for (int i = 0; i < 6; i++)
         {
-            _positions[positions[i]].ResetNode(true,_colors[colors[i]]);
+            _positions[positions[i]].ResetNode(true);
+            _positions[positions[i]].ChangeNodeColor(_colors[colors[i]]);
             _winPositions[i].GetComponent<Renderer>().material.color = _colors[colors[i]];
+            
+            //Debug.Log($"{_positions[positions[i]].name} {_positions[positions[i]].IsOccupied} {_colors[colors[i]]}");
         }
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
     }
 
     private List<int> RandomizePositions()
@@ -44,7 +41,6 @@ public class RandomSpawner : MonoBehaviour
             } while (positionsArray.Contains(number));
             positionsArray.Add(number);
         }
-
         return positionsArray;
     }
     private int[] RandomizeColors()
@@ -59,7 +55,6 @@ public class RandomSpawner : MonoBehaviour
             int j = Random.Range(0, 5);
             (colorsArray[j], colorsArray[i]) = (colorsArray[i], colorsArray[j]);
         }
-
         return colorsArray;
     }
 }

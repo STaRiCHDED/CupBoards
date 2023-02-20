@@ -21,26 +21,22 @@ public class GameController : MonoBehaviour
     [SerializeField] 
     private UIController _uiController;
 
-    [HideInInspector]
-    public UnityEvent _onGameEnded;
+    //[HideInInspector]
+    //public UnityEvent _onGameEnded;
 
     // Start is called before the first frame update
     void Awake()
     {
-        //_onGameEnded = new UnityEvent();
         _randomSpawner.Initialize(_positions, _colors, _winPositions);
         _cupBoardsMovement.Initialize(_inputController.OnNodeSelected, _positions);
-        _uiController.Initialize(_onGameEnded);
+        //_uiController.Initialize(_onGameEnded);
+        //_inputController.Initialize(_cupBoardsMovement.NodeStatus);
     }
 
+    
     private void Start()
     {
         _cupBoardsMovement.OnCupBoardMoved.AddListener(CheckCupBoards);
-    }
-
-    void Update()
-    {
-        
     }
 
     private void OnDestroy()
@@ -52,33 +48,36 @@ public class GameController : MonoBehaviour
     {
         var isGameEnded = true;
         var count = 0;
-        var i = 0;
         while (count < 3)
         {
-            if (_winPositions[i].GetComponent<Renderer>().material.color !=
-                _positions[i].GetComponent<Renderer>().material.color)
+            if (_winPositions[count].GetComponent<Renderer>().material.color !=
+                _positions[count].GetComponent<Renderer>().material.color)
             {
                 isGameEnded = false;
                 break;
             }
 
-            if (_winPositions[i + 3].GetComponent<Renderer>().material.color ==
-                _positions[i + 6].GetComponent<Renderer>().material.color)
+            if (_winPositions[count + 3].GetComponent<Renderer>().material.color !=
+                _positions[count + 6].GetComponent<Renderer>().material.color)
             {
                 isGameEnded = false;
                 break;
             }
+
+            count++;
         }
         if (isGameEnded)
         {
-            _onGameEnded?.Invoke();
+            Debug.Log("GameEnded");
         }
     }
 
+    /*
     public void Restart()
     {
         _randomSpawner.Initialize(_positions, _colors, _winPositions);
         _cupBoardsMovement.Initialize(_inputController.OnNodeSelected, _positions);
         _uiController.Initialize(_onGameEnded);
     }
+    */
 }
